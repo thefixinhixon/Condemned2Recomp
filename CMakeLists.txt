@@ -8,6 +8,11 @@ project(condemned2recomp LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ReXGlue SDK's memory.cpp uses SSSE3 intrinsics.
+if(NOT WIN32)
+    add_compile_options(-mssse3 -msse4.1)
+endif()
+
 include(generated/rexglue.cmake)
 
 # Sources
