@@ -47,3 +47,20 @@ option(CONDEMNED2_BUILD_LAUNCHER "Build the Qt launcher" ON)
 if(CONDEMNED2_BUILD_LAUNCHER)
     add_subdirectory(launcher)
 endif()
+
+# Post-codegen fixes: codegen sometimes emits REX_FATAL for branch targets
+# that do exist. Apply manual patches after codegen runs.
+if(TARGET condemned2recomp_codegen)
+    add_custom_target(condemned2recomp_fix_codegen
+        COMMAND ${CMAKE_COMMAND} -E echo "Applying codegen fixes..."
+        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/fix-codegen.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Patching codegen output for unresolved branches"
+        VERBATIM
+    )
+    add_dependencies(condemned2recomp_fix_codegen condemned2recomp_codegen)
+    # The recomp target must wait for our fixes
+    if(TARGET condemned2recomp_recomp)
+        add_dependencies(condemned2recomp_recomp condemned2recomp_fix_codegen)
+    endif()
+endif()
