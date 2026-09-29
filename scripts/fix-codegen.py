@@ -1,64 +1,123 @@
 #!/usr/bin/env python3
-"""Apply manual fixes to codegen output for unresolved branches.
+"""Apply manual fixes to codegen output for unresolved branches/calls.
 
-Codegen sometimes fails to resolve branch targets that do exist in the
+Codegen sometimes fails to resolve branch/call targets that do exist in the
 generated code, emitting REX_FATAL instead. This script patches those
 sites after codegen runs. It's idempotent - safe to run multiple times.
+
+For each unresolved site where the target function exists in the generated
+code, it adds a forward declaration and replaces the FATAL with a direct call.
 """
 import os
+import re
 import sys
+import glob
 
-def patch_file(path, old, new, desc):
-    with open(path) as f:
-        content = f.read()
-    if old in content:
-        content = content.replace(old, new)
-        with open(path, 'w') as f:
-            f.write(content)
-        print(f"  Fixed: {desc}")
-        return True
-    elif new.split('\n')[0] in content:
-        print(f"  Already fixed: {desc}")
-        return True
-    else:
-        print(f"  WARNING: pattern not found for {desc}", file=sys.stderr)
-        return False
+def get_function_map(gen_dir):
+    """Map lowercase function name -> actual case for all defined functions."""
+    funcs = {}
+    for path in glob.glob(os.path.join(gen_dir, 'condemned2recomp_recomp.*.cpp')):
+        with open(path) as f:
+            for m in re.finditer(r'DEFINE_REX_FUNC\((sub_[0-9A-Fa-f]+)\)', f.read()):
+                funcs[m.group(1).lower()] = m.group(1)
+    return funcs
+
+def patch_unresolved_calls(gen_dir, funcs):
+    """Find and fix all unresolved call/branch sites with existing targets."""
+    fixed = 0
+    skipped = 0
+    
+    for path in glob.glob(os.path.join(gen_dir, 'condemned2recomp_recomp.*.cpp')):
+        with open(path) as f:
+            content = f.read()
+        orig = content
+        
+        # Find all unresolved sites
+        # Pattern 1: REX_FATAL("Unresolved call from 0xAAAA to 0xBBBB");
+        for m in re.finditer(
+            r'([ \t]*)// (b|bl) 0x[0-9a-f]+\n'
+            r'[ \t]*// FATAL: unresolved function 0x([0-9A-Fa-f]+) \(no CallTarget in FunctionNode\)\n'
+            r'[ \t]*REX_FATAL\("Unresolved call from 0x[0-9A-Fa-f]+ to 0x[0-9A-Fa-f]+"\);\n'
+            r'[ \t]*return;',
+            content
+        ):
+            target = m.group(3)
+            func_lower = f"sub_{target}".lower()
+            if func_lower in funcs:
+                func = funcs[func_lower]  # Use actual case
+                # Add forward declaration if not present
+                decl = f"DECLARE_REX_FUNC({func});"
+                if decl not in content:
+                    # Insert after first #include
+                    content = content.replace(
+                        '\n\nDEFINE_REX_FUNC',
+                        f'\n{decl}  // for manually resolved call\n\nDEFINE_REX_FUNC',
+                        1
+                    )
+                # Replace the FATAL with direct call
+                old = m.group(0)
+                new = (
+                    f"{m.group(1)}// {m.group(2)} 0x{target.lower()} (manually resolved)\n"
+                    f"{m.group(1)}{func}(ctx, base);\n"
+                    f"{m.group(1)}return;"
+                )
+                content = content.replace(old, new)
+                fixed += 1
+                print(f"  Fixed call to 0x{target} in {os.path.basename(path)}")
+            else:
+                skipped += 1
+        
+        # Pattern 2: if (cond) REX_FATAL("Unresolved branch from 0xAAAA to 0xBBBB");
+        for m in re.finditer(
+            r'([ \t]*)// b\w+ 0x[0-9a-f]+\n'
+            r'[ \t]*if \(([^)]+)\) REX_FATAL\("Unresolved branch from 0x[0-9A-Fa-f]+ to 0x([0-9A-Fa-f]+)"\);',
+            content
+        ):
+            target = m.group(3)
+            cond = m.group(2)
+            func_lower = f"sub_{target}".lower()
+            if func_lower in funcs:
+                func = funcs[func_lower]  # Use actual case
+                decl = f"DECLARE_REX_FUNC({func});"
+                if decl not in content:
+                    content = content.replace(
+                        '\n\nDEFINE_REX_FUNC',
+                        f'\n{decl}  // for manually resolved branch\n\nDEFINE_REX_FUNC',
+                        1
+                    )
+                old = m.group(0)
+                new = (
+                    f"{m.group(1)}// conditional branch to 0x{target.lower()} (manually resolved)\n"
+                    f"{m.group(1)}if ({cond}) {{\n"
+                    f"{m.group(1)}\t{func}(ctx, base);\n"
+                    f"{m.group(1)}\treturn;\n"
+                    f"{m.group(1)}}}"
+                )
+                content = content.replace(old, new)
+                fixed += 1
+                print(f"  Fixed branch to 0x{target} in {os.path.basename(path)}")
+            else:
+                skipped += 1
+        
+        if content != orig:
+            with open(path, 'w') as f:
+                f.write(content)
+    
+    print(f"\nFixed {fixed} sites, skipped {skipped} (target not found)")
+    return 0
 
 def main():
-    gen_dir = os.path.join(os.path.dirname(__file__), '..', 'generated', 'default')
+    gen_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'generated', 'default')
     if not os.path.isdir(gen_dir):
         print(f"Generated dir not found: {gen_dir}", file=sys.stderr)
         return 1
-
-    target = os.path.join(gen_dir, 'condemned2recomp_recomp.115.cpp')
-    if not os.path.isfile(target):
-        print(f"Target file not found: {target}", file=sys.stderr)
-        return 1
-
-    # 1. Add forward declaration
-    patch_file(target,
-        '#include "condemned2recomp_funcs.115.h"\n',
-        '#include "condemned2recomp_funcs.115.h"\nDECLARE_REX_FUNC(sub_8217C024);  // for manually resolved branch\n',
-        'forward declaration')
-
-    # 2. Fix unconditional branches to 0x8217C024
-    patch_file(target,
-        '\t// b 0x8217c024\n\t// FATAL: unresolved function 0x8217C024 (no CallTarget in FunctionNode)\n\tREX_FATAL("Unresolved call from 0x8217BF20 to 0x8217C024");\n\treturn;',
-        '\t// b 0x8217c024 (manually resolved)\n\tsub_8217C024(ctx, base);\n\treturn;',
-        'unconditional branch 0x8217BF20->0x8217C024')
-
-    patch_file(target,
-        '\t// b 0x8217c024\n\t// FATAL: unresolved function 0x8217C024 (no CallTarget in FunctionNode)\n\tREX_FATAL("Unresolved call from 0x8217BFEC to 0x8217C024");\n\treturn;',
-        '\t// b 0x8217c024 (manually resolved)\n\tsub_8217C024(ctx, base);\n\treturn;',
-        'unconditional branch 0x8217BFEC->0x8217C024')
-
-    # 3. Fix conditional branch
-    patch_file(target,
-        '\t// beq 0x8217c024\n\tif (ctx.cr0.eq) REX_FATAL("Unresolved branch from 0x8217BF0C to 0x8217C024");',
-        '\t// beq 0x8217c024 (manually resolved)\n\tif (ctx.cr0.eq) {\n\t\tsub_8217C024(ctx, base);\n\t\treturn;\n\t}',
-        'conditional branch 0x8217BF0C->0x8217C024')
-
-    return 0
+    
+    print("Building function map...")
+    funcs = get_function_map(gen_dir)
+    print(f"Found {len(funcs)} defined functions")
+    
+    print("\nPatching unresolved calls/branches...")
+    return patch_unresolved_calls(gen_dir, funcs)
 
 if __name__ == '__main__':
     sys.exit(main())
