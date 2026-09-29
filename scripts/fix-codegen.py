@@ -99,6 +99,36 @@ def patch_unresolved_calls(gen_dir, funcs):
             else:
                 skipped += 1
         
+        # Pattern 3: conditional branch to local label
+        #   // beq 0xXXXXXXXX
+        #   // ERROR: conditional branch to unknown address 0xXXXXXXXX
+        #   if (cond) REX_FATAL("Unresolved branch from 0xAAAA to 0xXXXXXXXX");
+        # where loc_XXXXXXXX: exists in the same file
+        for m in re.finditer(
+            r'([ \t]*)// b\w+ 0x[0-9a-f]+\n'
+            r'[ \t]*// ERROR: conditional branch to unknown address 0x([0-9A-Fa-f]+)\n'
+            r'[ \t]*if \(([^)]+)\) REX_FATAL\("Unresolved branch from 0x[0-9A-Fa-f]+ to 0x[0-9A-Fa-f]+"\);',
+            content
+        ):
+            target = m.group(2)
+            cond = m.group(3)
+            label = f"loc_{target.upper()}:"
+            # Check if the label exists in this file
+            if label in content or f"loc_{target.lower()}:" in content:
+                # Use the actual label case found
+                actual_label = label if label in content else f"loc_{target.lower()}:"
+                label_name = actual_label[:-1]  # Remove the colon
+                old = m.group(0)
+                new = (
+                    f"{m.group(1)}// conditional branch to {label_name} (manually resolved)\n"
+                    f"{m.group(1)}if ({cond}) goto {label_name};"
+                )
+                content = content.replace(old, new)
+                fixed += 1
+                print(f"  Fixed local branch to {label_name} in {os.path.basename(path)}")
+            else:
+                skipped += 1
+        
         if content != orig:
             with open(path, 'w') as f:
                 f.write(content)
