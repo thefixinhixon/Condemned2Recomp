@@ -34,6 +34,9 @@ class Condemned2recompApp : public rex::ReXApp {
       // permanent black screens when incomplete frames are skipped.
       // Disable the skip so placeholder shaders are shown instead of black.
       rex::cvar::SetFlagByName("vulkan_async_skip_incomplete_frames", "false");
+      // Also disable async compilation entirely - Condemned 2's shader
+      // usage pattern doesn't work well with async.
+      rex::cvar::SetFlagByName("async_shader_compilation", "false");
   }
 
   // Override virtual hooks for customization:
