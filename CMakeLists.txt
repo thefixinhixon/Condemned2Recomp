@@ -22,3 +22,23 @@ else()
 endif()
 
 rexglue_setup_target(condemned2recomp)
+
+# imgui headers ship inside the SDK tree but aren't added to the include
+# path by rexglue_setup_target; add them explicitly (same as hells-gate).
+if(REXSDK_DIR)
+    target_include_directories(condemned2recomp PRIVATE
+        "${REXSDK_DIR}/thirdparty/imgui"
+    )
+endif()
+
+if(TARGET imgui::imgui)
+    target_link_libraries(condemned2recomp PRIVATE imgui::imgui)
+elseif(TARGET imgui)
+    target_link_libraries(condemned2recomp PRIVATE imgui)
+endif()
+
+# Qt launcher (graphics/audio/locale settings, ISO import, game finder).
+option(CONDEMNED2_BUILD_LAUNCHER "Build the Qt launcher" ON)
+if(CONDEMNED2_BUILD_LAUNCHER)
+    add_subdirectory(launcher)
+endif()

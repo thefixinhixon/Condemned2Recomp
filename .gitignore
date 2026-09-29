@@ -2,3 +2,5 @@
 assets/
 *.xex
 *.iso
+# Build output
+out/

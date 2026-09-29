@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Condemned 2: Bloodshot
+Comment=Native Linux launcher for Condemned 2: Bloodshot
+Exec=condemned2_launcher
+Icon=condemned2
+Categories=Game;ActionGame;
+Terminal=false
+StartupNotify=true
