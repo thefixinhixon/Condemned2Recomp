@@ -29,6 +29,13 @@ class Condemned2recompApp : public rex::ReXApp {
       }
   }
 
+  void OnPostSetup() override {
+      // Condemned 2 uses async shader compilation in a way that causes
+      // permanent black screens when incomplete frames are skipped.
+      // Disable the skip so placeholder shaders are shown instead of black.
+      rex::cvar::SetFlagByName("vulkan_async_skip_incomplete_frames", "false");
+  }
+
   // Override virtual hooks for customization:
   // void OnPostInitLogging() override {}
   // void OnLoadXexImage(std::string& xex_image) override {}
