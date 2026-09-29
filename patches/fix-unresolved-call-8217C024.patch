@@ -1,0 +1,9 @@
+# Fix for codegen "Unresolved call from 0x8217BF20 to 0x8217C024"
+# The function sub_8217C024 exists in the generated code and function table,
+# but codegen failed to resolve this one branch edge and emitted REX_FATAL.
+# Apply after running codegen, before building:
+#   patch -p1 < patches/fix-unresolved-call-8217C024.patch
+#
+# Or manually in generated/default/condemned2recomp_recomp.115.cpp:
+# 1. Add DECLARE_REX_FUNC(sub_8217C024); after the #include
+# 2. Replace the REX_FATAL block with: sub_8217C024(ctx, base); return;
