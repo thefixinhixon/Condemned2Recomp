@@ -9,4 +9,4 @@ export QT_PLUGIN_PATH="$HERE/usr/plugins"
 # and xcb on X11. (Forcing xcb under XWayland broke mouse input.)
 export DISABLE_LSFG="${DISABLE_LSFG:-1}"
 
-exec "$HERE/usr/bin/dantes_inferno_launcher" "$@"
+exec "$HERE/usr/bin/condemned2_launcher" "$@"
