@@ -67,14 +67,14 @@ def patch_unresolved_calls(gen_dir, funcs):
             else:
                 skipped += 1
         
-        # Pattern 2: if (cond) REX_FATAL("Unresolved branch from 0xAAAA to 0xBBBB");
+        # Pattern 2: conditional branch to function (any comment format)
+        #   if (cond) REX_FATAL("Unresolved branch from 0xAAAA to 0xBBBB");
         for m in re.finditer(
-            r'([ \t]*)// b\w+ 0x[0-9a-f]+\n'
             r'[ \t]*if \(([^)]+)\) REX_FATAL\("Unresolved branch from 0x[0-9A-Fa-f]+ to 0x([0-9A-Fa-f]+)"\);',
             content
         ):
-            target = m.group(3)
-            cond = m.group(2)
+            target = m.group(2)
+            cond = m.group(1)
             func_lower = f"sub_{target}".lower()
             if func_lower in funcs:
                 func = funcs[func_lower]  # Use actual case
@@ -86,12 +86,14 @@ def patch_unresolved_calls(gen_dir, funcs):
                         1
                     )
                 old = m.group(0)
+                # Preserve leading whitespace
+                ws = old[:len(old) - len(old.lstrip())]
                 new = (
-                    f"{m.group(1)}// conditional branch to 0x{target.lower()} (manually resolved)\n"
-                    f"{m.group(1)}if ({cond}) {{\n"
-                    f"{m.group(1)}\t{func}(ctx, base);\n"
-                    f"{m.group(1)}\treturn;\n"
-                    f"{m.group(1)}}}"
+                    f"{ws}// conditional branch to 0x{target.lower()} (manually resolved)\n"
+                    f"{ws}if ({cond}) {{\n"
+                    f"{ws}\t{func}(ctx, base);\n"
+                    f"{ws}\treturn;\n"
+                    f"{ws}}}"
                 )
                 content = content.replace(old, new)
                 fixed += 1
