@@ -37,6 +37,10 @@ class Condemned2recompApp : public rex::ReXApp {
       // Also disable async compilation entirely - Condemned 2's shader
       // usage pattern doesn't work well with async.
       rex::cvar::SetFlagByName("async_shader_compilation", "false");
+      // AMD/RADV fix: unclipped draw shaders cause blank screen during
+      // gameplay on AMD GPUs. Execute them on CPU instead.
+      // (Known issue: https://github.com/drdoom69gaming/condemned2recomp-linux)
+      rex::cvar::SetFlagByName("execute_unclipped_draw_vs_on_cpu", "true");
   }
 
   // Override virtual hooks for customization:
